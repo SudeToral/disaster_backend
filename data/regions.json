@@ -1,0 +1,54 @@
+{
+  "regions": [
+    {
+      "region_id": "R1",
+      "name": "Izmir Korfez Bolgesi",
+      "terrain_type": "coastal",
+      "population": 500000,
+      "characteristics": ["coastal", "urban", "port_area", "tsunami_risk"],
+      "lat_center": 38.4200,
+      "lon_center": 27.1300,
+      "radius_km": 15.0
+    },
+    {
+      "region_id": "R2",
+      "name": "Bornova Dag Etegi",
+      "terrain_type": "mountain",
+      "population": 80000,
+      "characteristics": ["mountain", "rural", "limited_road_access", "landslide_risk"],
+      "lat_center": 38.3500,
+      "lon_center": 27.0800,
+      "radius_km": 10.0
+    },
+    {
+      "region_id": "R3",
+      "name": "Konak Merkez",
+      "terrain_type": "urban",
+      "population": 350000,
+      "characteristics": ["urban", "dense", "historic_buildings", "earthquake_vulnerable"],
+      "lat_center": 38.4180,
+      "lon_center": 27.1290,
+      "radius_km": 5.0
+    },
+    {
+      "region_id": "R4",
+      "name": "Cesme Yarimadasi",
+      "terrain_type": "coastal",
+      "population": 45000,
+      "characteristics": ["coastal", "rural", "tourism", "limited_hospital_access"],
+      "lat_center": 38.3240,
+      "lon_center": 26.3030,
+      "radius_km": 12.0
+    },
+    {
+      "region_id": "R5",
+      "name": "Kemalpasa Ovasi",
+      "terrain_type": "rural",
+      "population": 110000,
+      "characteristics": ["rural", "agricultural", "flat_terrain", "flood_risk"],
+      "lat_center": 38.4300,
+      "lon_center": 27.4200,
+      "radius_km": 8.0
+    }
+  ]
+}

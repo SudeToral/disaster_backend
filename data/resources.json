@@ -1,0 +1,40 @@
+{
+  "resource_types": [
+    {
+      "type": "ambulance",
+      "description": "Standard ground ambulance",
+      "terrain_capability": ["urban", "rural", "mountain", "coastal"],
+      "speed_kmh": 60
+    },
+    {
+      "type": "marine_ambulance",
+      "description": "Sea-based medical transport vessel",
+      "terrain_capability": ["coastal"],
+      "speed_kmh": 30
+    },
+    {
+      "type": "helicopter",
+      "description": "Air medical transport helicopter",
+      "terrain_capability": ["urban", "rural", "mountain", "coastal"],
+      "speed_kmh": 200
+    },
+    {
+      "type": "search_and_rescue",
+      "description": "Specialized search and rescue team",
+      "terrain_capability": ["urban", "mountain"],
+      "speed_kmh": 20
+    }
+  ],
+  "inventory": {
+    "H1": {"ambulance": 15, "helicopter": 1},
+    "H2": {"ambulance": 3, "marine_ambulance": 2},
+    "H3": {"marine_ambulance": 3},
+    "H4": {"ambulance": 12},
+    "H5": {"ambulance": 8, "search_and_rescue": 2},
+    "H6": {"ambulance": 20, "helicopter": 2},
+    "H7": {"ambulance": 6},
+    "H8": {"ambulance": 2, "marine_ambulance": 2},
+    "H9": {"ambulance": 5},
+    "H10": {"ambulance": 4, "helicopter": 3}
+  }
+}
