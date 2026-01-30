@@ -8,7 +8,29 @@ def zone_weight(z):
     # Core driver of allocation
     return 1 + 2 * z.damage_severity + z.population_density
 
-def build_graph(zones, hospitals):
+def compute_edge_cost(h, z, context):
+    base_cost = distance(h, z) / zone_weight(z)
+
+    multiplier = 1.0
+
+    if is_road_blocked(h, z, context):
+        multiplier *= context.get("road_block_penalty", 10.0)
+
+    multiplier *= context.get("weather_penalty", 1.0)
+
+    return base_cost * multiplier
+
+def is_road_blocked(h, z, context):
+    blocked = context.get("blocked_roads", [])
+    return any(
+        b["hospital_id"] == h.hospital_id and
+        b["zone_id"] == z.zone_id
+        for b in blocked
+    )
+
+
+def build_graph(zones, hospitals, context=None):
+    context = context or {}
     G = nx.Graph()
 
     for h in hospitals:
@@ -30,10 +52,11 @@ def build_graph(zones, hospitals):
 
     for h in hospitals:
         for z in zones:
+            cost = compute_edge_cost(h, z, context)
             G.add_edge(
                 f"H:{h.hospital_id}",
                 f"Z:{z.zone_id}",
-                cost=distance(h, z)
+                cost=cost
             )
 
     return G
@@ -54,7 +77,7 @@ def allocate_resources(G, zones, hospitals):
     zone_targets = {
         z.zone_id: min(
             z.medical_demand,
-            round(total_supply * zone_weight(z) / total_weight)
+            int(total_supply * zone_weight(z) / total_weight)
         )
         for z in zones
     }
@@ -106,7 +129,8 @@ def allocate_resources(G, zones, hospitals):
             "zone_id": z.zone_id,
             "priority": priority,
             "confidence": confidence,
-            "assigned_resources": assignments
+            "assigned_resources": assignments,
+            "unserved": z.medical_demand - (zone_targets[z.zone_id] - remaining)
         })
 
     return results
