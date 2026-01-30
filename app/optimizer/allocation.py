@@ -1,101 +1,109 @@
-from ortools.graph.python import min_cost_flow
-
+import networkx as nx
 import math
 
-
 def distance(a, b):
-    # Simple Euclidean distance (MVP-safe)
     return math.sqrt((a.lat - b.lat)**2 + (a.lon - b.lon)**2)
 
+def zone_weight(z):
+    # Core driver of allocation
+    return 1 + 2 * z.damage_severity + z.population_density
 
-def compute_priority_weight(zone):
-    return 1 + 2 * zone.damage_severity + zone.population_density
+def build_graph(zones, hospitals):
+    G = nx.Graph()
 
-
-def optimize_allocation(zones, hospitals):
-    mcf = min_cost_flow.SimpleMinCostFlow()
-
-
-    # Node indexing
-    source = 0
-    hospital_offset = 1
-    zone_offset = hospital_offset + len(hospitals)
-    sink = zone_offset + len(zones)
-
-    # Source → Hospitals
-    for j, h in enumerate(hospitals):
-        mcf.add_arc_with_capacity_and_unit_cost(
-            source,
-            hospital_offset + j,
-            h.ambulances,
-            0
+    for h in hospitals:
+        G.add_node(
+            f"H:{h.hospital_id}",
+            capacity=h.ambulances,
+            lat=h.lat,
+            lon=h.lon
         )
 
-    # Hospitals → Zones
-    for j, h in enumerate(hospitals):
-        for i, z in enumerate(zones):
-            cost = int(
-                distance(h, z) * 100 / compute_priority_weight(z)
-            )
-            mcf.add_arc_with_capacity_and_unit_cost(
-                hospital_offset + j,
-                zone_offset + i,
-                999,
-                cost
-            )
-
-    # Zones → Sink
-    for i, z in enumerate(zones):
-        mcf.add_arc_with_capacity_and_unit_cost(
-            zone_offset + i,
-            sink,
-            z.medical_demand,
-            0
+    for z in zones:
+        G.add_node(
+            f"Z:{z.zone_id}",
+            demand=z.medical_demand,
+            weight=zone_weight(z),
+            lat=z.lat,
+            lon=z.lon
         )
 
-    # Supplies
-    mcf.set_node_supply(source, sum(h.ambulances for h in hospitals))
-    mcf.set_node_supply(sink, -sum(z.medical_demand for z in zones))
+    for h in hospitals:
+        for z in zones:
+            G.add_edge(
+                f"H:{h.hospital_id}",
+                f"Z:{z.zone_id}",
+                cost=distance(h, z)
+            )
 
-    for i in range(hospital_offset, sink):
-        mcf.set_node_supply(i, 0)
+    return G
 
-    status = mcf.solve()
-    if status != mcf.OPTIMAL:
-        raise RuntimeError("Optimization failed")
-
-    return mcf, hospital_offset, zone_offset
-
-def build_zone_results(mcf, zones, hospitals, hospital_offset, zone_offset):
+def allocate_resources(G, zones, hospitals):
     results = []
 
-    for i, zone in enumerate(zones):
-        allocated = 0
+    # Remaining hospital capacities
+    hospital_caps = {
+        f"H:{h.hospital_id}": h.ambulances
+        for h in hospitals
+    }
+
+    total_supply = sum(h.ambulances for h in hospitals)
+    total_weight = sum(zone_weight(z) for z in zones)
+
+    # Compute target allocation per zone (severity-driven)
+    zone_targets = {
+        z.zone_id: min(
+            z.medical_demand,
+            round(total_supply * zone_weight(z) / total_weight)
+        )
+        for z in zones
+    }
+
+    # Process zones strictly by severity
+    for z in sorted(zones, key=zone_weight, reverse=True):
+        zone_node = f"Z:{z.zone_id}"
+        remaining = zone_targets[z.zone_id]
         assignments = []
 
-        for arc in range(mcf.NumArcs()):
-            if mcf.Head(arc) == zone_offset + i:
-                flow = mcf.Flow(arc)
-                if flow > 0:
-                    hospital_idx = mcf.Tail(arc) - hospital_offset
-                    assignments.append({
-                        "hospital": hospitals[hospital_idx].hospital_id,
-                        "ambulances": flow
-                    })
-                    allocated += flow
-
-        served_ratio = allocated / zone.medical_demand if zone.medical_demand else 1
-
-        priority = (
-            "HIGH" if served_ratio < 0.6 else
-            "MEDIUM" if served_ratio < 0.9 else
-            "LOW"
+        neighbors = sorted(
+            G.neighbors(zone_node),
+            key=lambda h: G[h][zone_node]["cost"]
         )
 
-        confidence = round(1 - abs(served_ratio - 1), 2)
+        for h_node in neighbors:
+            if remaining <= 0:
+                break
+
+            available = hospital_caps[h_node]
+            if available <= 0:
+                continue
+
+            used = min(available, remaining)
+            hospital_caps[h_node] -= used
+            remaining -= used
+
+            assignments.append({
+                "hospital": h_node.split(":")[1],
+                "ambulances": used
+            })
+
+        # Priority is MOCKED for now: intrinsic severity only
+        w = zone_weight(z)
+        if w > 3.0:
+            priority = "HIGH"
+        elif w > 2.0:
+            priority = "MEDIUM"
+        else:
+            priority = "LOW"
+
+        confidence = round(
+            (zone_targets[z.zone_id] - remaining) / z.medical_demand
+            if z.medical_demand else 1,
+            2
+        )
 
         results.append({
-            "zone_id": zone.zone_id,
+            "zone_id": z.zone_id,
             "priority": priority,
             "confidence": confidence,
             "assigned_resources": assignments

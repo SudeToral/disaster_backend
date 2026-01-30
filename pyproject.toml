@@ -7,5 +7,6 @@ dependencies = [
   "fastapi",
   "uvicorn[standard]",
   "ortools",
-  "numpy"
+  "numpy",
+  "networkx>=3.4.2",
 ]
