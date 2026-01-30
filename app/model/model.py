@@ -24,11 +24,11 @@ from typing import Dict
 def predict_with_type(image_path: str, disaster_type: str, save: bool = False, overlay_path: str | None = None) -> Dict:
     disaster_type = disaster_type.lower().strip()
 
-    if disaster_type == "deprem":
+    if disaster_type == "earthquake":
         from .earthquake import predict as predict_deprem
         return predict_deprem(image_path, save=save, overlay_path=overlay_path)
 
-    elif disaster_type == "sel":
+    elif disaster_type == "flood":
         from .flood import predict as predict_sel
         # flood predict imzan farklıysa:
         try:
@@ -36,7 +36,7 @@ def predict_with_type(image_path: str, disaster_type: str, save: bool = False, o
         except TypeError:
             return predict_sel(image_path)
 
-    elif disaster_type == "yangin":
+    elif disaster_type == "fire":
         from .fire import predict as predict_yangin
         try:
             return predict_yangin(image_path, save=save, overlay_path=overlay_path)

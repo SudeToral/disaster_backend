@@ -10,10 +10,24 @@ from typing import Any, Dict
 from fastapi import UploadFile, File, Form, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.model.model import predict_with_type
 
 app = FastAPI(title="MED-ARES Optimization Engine")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",   # Vite default
+        "http://127.0.0.1:5173",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
 UPLOAD_DIR = "uploads"
 ORIGINAL_DIR = os.path.join(UPLOAD_DIR, "original")
 OVERLAY_DIR = os.path.join(UPLOAD_DIR, "overlay")
@@ -23,7 +37,7 @@ os.makedirs(ORIGINAL_DIR, exist_ok=True)
 os.makedirs(OVERLAY_DIR, exist_ok=True)
 
 # overlay/original dosyalarını URL ile servis etmek için:
-app.mount("/files", StaticFiles(directory=UPLOAD_DIR), name="files")
+app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 
 
@@ -127,7 +141,7 @@ async def predict(
     response = {
         "request_id": request_id,
         "disaster_type": disaster_type,
-        "original_url": f"/files/original/{request_id}{ext}",
+        "original_url": f"/uploads/original/{request_id}{ext}",
         "is_disaster": result.get("is_disaster", False),
         "coverage_ratio": result.get("coverage_ratio", 0.0),
         "damaged_regions": result.get("damaged_regions", 0),
@@ -136,6 +150,6 @@ async def predict(
     }
 
     if save and os.path.exists(overlay_path):
-        response["overlay_url"] = f"/files/overlay/{request_id}_overlay.png"
+        response["overlay_url"] = f"/uploads/overlay/{request_id}_overlay.png"
 
     return JSONResponse(content=response)
