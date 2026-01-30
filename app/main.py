@@ -3,8 +3,28 @@ from app.optimizer.schemas import AllocationRequest, AgentOptimizeResponse, Zone
 from app.optimizer.allocation import build_graph, allocate_resources, events_to_context
 from app.agents.orchestrator import orchestrator_graph
 from app.config import load_hospitals_with_resources, detect_terrain
+import os
+import uuid
+import shutil
+from typing import Any, Dict
+from fastapi import UploadFile, File, Form, HTTPException
+from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
+
+from app.model.model import predict_with_type
 
 app = FastAPI(title="MED-ARES Optimization Engine")
+UPLOAD_DIR = "uploads"
+ORIGINAL_DIR = os.path.join(UPLOAD_DIR, "original")
+OVERLAY_DIR = os.path.join(UPLOAD_DIR, "overlay")
+
+
+os.makedirs(ORIGINAL_DIR, exist_ok=True)
+os.makedirs(OVERLAY_DIR, exist_ok=True)
+
+# overlay/original dosyalarını URL ile servis etmek için:
+app.mount("/files", StaticFiles(directory=UPLOAD_DIR), name="files")
+
 
 
 def _get_hospitals() -> list:
@@ -65,3 +85,57 @@ async def optimize(req: AllocationRequest):
             data_sources=[],
             fallback_used=True,
         )
+@app.post("/predict")
+async def predict(
+    disaster_type: str = Form(...),
+    save: bool = Form(False),
+    file: UploadFile = File(...),
+):
+    # 1) input kontrol
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No file uploaded.")
+
+    _, ext = os.path.splitext(file.filename.lower())
+    if ext not in {".jpg", ".jpeg", ".png", ".webp"}:
+        raise HTTPException(status_code=400, detail=f"Unsupported file type: {ext}")
+
+    # 2) orijinal görüntüyü kaydet
+    request_id = str(uuid.uuid4())
+    original_path = os.path.join(ORIGINAL_DIR, f"{request_id}{ext}")
+
+    try:
+        with open(original_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save file: {str(e)}")
+
+    # 3) overlay hedef path (save=true ise model buraya yazabilir)
+    overlay_path = os.path.join(OVERLAY_DIR, f"{request_id}_overlay.png")
+
+    # 4) inference
+    try:
+        result: Dict[str, Any] = predict_with_type(
+            image_path=original_path,
+            disaster_type=disaster_type,
+            save=save,
+            overlay_path=overlay_path
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Prediction error: {str(e)}")
+
+    # 5) response
+    response = {
+        "request_id": request_id,
+        "disaster_type": disaster_type,
+        "original_url": f"/files/original/{request_id}{ext}",
+        "is_disaster": result.get("is_disaster", False),
+        "coverage_ratio": result.get("coverage_ratio", 0.0),
+        "damaged_regions": result.get("damaged_regions", 0),
+        "details": result.get("details", {}),
+        "overlay_url": None
+    }
+
+    if save and os.path.exists(overlay_path):
+        response["overlay_url"] = f"/files/overlay/{request_id}_overlay.png"
+
+    return JSONResponse(content=response)
