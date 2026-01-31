@@ -7,12 +7,6 @@
       "speed_kmh": 60
     },
     {
-      "type": "marine_ambulance",
-      "description": "Sea-based medical transport vessel",
-      "terrain_capability": ["coastal"],
-      "speed_kmh": 30
-    },
-    {
       "type": "helicopter",
       "description": "Air medical transport helicopter",
       "terrain_capability": ["urban", "rural", "mountain", "coastal"],
@@ -21,20 +15,51 @@
     {
       "type": "search_and_rescue",
       "description": "Specialized search and rescue team",
-      "terrain_capability": ["urban", "mountain"],
+      "terrain_capability": ["urban", "mountain", "rural"],
       "speed_kmh": 20
+    },
+    {
+      "type": "fire_truck",
+      "description": "Standard firefighting vehicle",
+      "terrain_capability": ["urban", "rural", "coastal"],
+      "speed_kmh": 50
+    },
+    {
+      "type": "fire_helicopter",
+      "description": "Aerial firefighting helicopter with water bucket",
+      "terrain_capability": ["urban", "rural", "mountain", "coastal"],
+      "speed_kmh": 180
+    },
+    {
+      "type": "rescue_boat",
+      "description": "Water rescue vessel for flooded areas",
+      "terrain_capability": ["coastal", "rural"],
+      "speed_kmh": 25
+    },
+    {
+      "type": "heavy_rescue",
+      "description": "Heavy machinery for rubble extraction and building collapse",
+      "terrain_capability": ["urban", "mountain", "rural"],
+      "speed_kmh": 15
+    },
+    {
+      "type": "food_supply",
+      "description": "Aid distribution truck for food and water",
+      "terrain_capability": ["urban", "rural", "mountain", "coastal"],
+      "speed_kmh": 40
     }
   ],
   "inventory": {
-    "H1": {"ambulance": 15, "helicopter": 1},
-    "H2": {"ambulance": 3, "marine_ambulance": 2},
-    "H3": {"marine_ambulance": 3},
-    "H4": {"ambulance": 12},
-    "H5": {"ambulance": 8, "search_and_rescue": 2},
-    "H6": {"ambulance": 20, "helicopter": 2},
-    "H7": {"ambulance": 6},
-    "H8": {"ambulance": 2, "marine_ambulance": 2},
-    "H9": {"ambulance": 5},
-    "H10": {"ambulance": 4, "helicopter": 3}
+    "H1":  {"ambulance": 20, "helicopter": 1, "search_and_rescue": 1, "heavy_rescue": 2},
+    "H2":  {"ambulance": 12, "heavy_rescue": 1, "food_supply": 1},
+    "H3":  {"ambulance": 10, "search_and_rescue": 1, "rescue_boat": 2},
+    "H4":  {"ambulance": 4, "search_and_rescue": 1, "rescue_boat": 3},
+    "H5":  {"ambulance": 5, "search_and_rescue": 2, "heavy_rescue": 1, "food_supply": 1},
+    "H6":  {"ambulance": 3, "fire_truck": 3, "fire_helicopter": 1},
+    "H7":  {"ambulance": 6, "fire_truck": 1, "rescue_boat": 1, "food_supply": 2},
+    "H8":  {"ambulance": 4, "rescue_boat": 1, "food_supply": 3},
+    "H9":  {"ambulance": 10, "search_and_rescue": 1, "fire_truck": 2, "heavy_rescue": 2},
+    "H10": {"ambulance": 3, "helicopter": 4, "fire_helicopter": 2},
+    "H11": {"ambulance": 2, "heavy_rescue": 1, "food_supply": 5}
   }
 }

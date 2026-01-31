@@ -9,34 +9,94 @@ import math
 RESOURCE_TYPES = {
     "ambulance": {
         "speed_kmh": 60,
+        "capacity_per_unit": 1,
         "terrain_capability": {"urban", "rural", "mountain", "coastal"},
         "ignores_road_block": False,
-    },
-    "marine_ambulance": {
-        "speed_kmh": 30,
-        "terrain_capability": {"coastal"},
-        "ignores_road_block": True,
+        "applicable_disasters": {"earthquake", "flood", "fire"},
     },
     "helicopter": {
         "speed_kmh": 200,
-        "terrain_capability": {"urban", "rural", "mountain", "coastal"},
+        "capacity_per_unit": 5,
+        "terrain_capability": {"urban", "rural", "mountain", "coastal", "forest"},
         "ignores_road_block": True,
+        "applicable_disasters": {"earthquake", "flood", "fire"},
     },
     "search_and_rescue": {
         "speed_kmh": 20,
-        "terrain_capability": {"urban", "mountain"},
+        "capacity_per_unit": 4,
+        "terrain_capability": {"urban", "mountain", "rural"},
         "ignores_road_block": False,
+        "applicable_disasters": {"earthquake", "flood"},
+    },
+    "fire_truck": {
+        "speed_kmh": 50,
+        "capacity_per_unit": 10,
+        "terrain_capability": {"urban", "rural", "coastal"},
+        "ignores_road_block": False,
+        "applicable_disasters": {"fire"},
+    },
+    "fire_helicopter": {
+        "speed_kmh": 180,
+        "capacity_per_unit": 15,
+        "terrain_capability": {"urban", "rural", "mountain", "coastal", "forest"},
+        "ignores_road_block": True,
+        "applicable_disasters": {"fire"},
+    },
+    "rescue_boat": {
+        "speed_kmh": 25,
+        "capacity_per_unit": 6,
+        "terrain_capability": {"coastal", "rural"},
+        "ignores_road_block": True,
+        "applicable_disasters": {"flood"},
+    },
+    "heavy_rescue": {
+        "speed_kmh": 15,
+        "capacity_per_unit": 3,
+        "terrain_capability": {"urban", "mountain", "rural"},
+        "ignores_road_block": False,
+        "applicable_disasters": {"earthquake"},
+    },
+    "food_supply": {
+        "speed_kmh": 40,
+        "capacity_per_unit": 0,
+        "terrain_capability": {"urban", "rural", "mountain", "coastal"},
+        "ignores_road_block": False,
+        "applicable_disasters": {"earthquake"},
     },
 }
 
 DEFAULT_SPEED_KMH = 60
 
-# Preferred resource order per terrain type (specialists first)
+# Preferred resource order per disaster+terrain combination
+DISASTER_TERRAIN_PREFERRED_RESOURCES = {
+    "earthquake": {
+        "urban":    ["heavy_rescue", "search_and_rescue", "ambulance", "helicopter", "food_supply"],
+        "mountain": ["helicopter", "search_and_rescue", "heavy_rescue", "ambulance", "food_supply"],
+        "coastal":  ["ambulance", "heavy_rescue", "helicopter", "food_supply"],
+        "rural":    ["heavy_rescue", "ambulance", "food_supply", "search_and_rescue", "helicopter"],
+    },
+    "flood": {
+        "urban":    ["rescue_boat", "search_and_rescue", "ambulance", "helicopter"],
+        "mountain": ["helicopter", "search_and_rescue", "ambulance"],
+        "coastal":  ["rescue_boat", "helicopter", "ambulance", "search_and_rescue"],
+        "rural":    ["rescue_boat", "ambulance", "search_and_rescue", "helicopter"],
+    },
+    "fire": {
+        "urban":    ["fire_truck", "ambulance", "fire_helicopter", "helicopter"],
+        "mountain": ["fire_helicopter", "helicopter", "ambulance"],
+        "coastal":  ["fire_truck", "fire_helicopter", "ambulance", "helicopter"],
+        "rural":    ["fire_truck", "fire_helicopter", "ambulance", "helicopter"],
+        "forest":   ["fire_helicopter", "helicopter"],
+    },
+}
+
+# Fallback: terrain-only preference (used when disaster_type is unknown)
 TERRAIN_PREFERRED_RESOURCES = {
-    "coastal": ["marine_ambulance", "ambulance", "helicopter"],
+    "coastal":  ["ambulance", "rescue_boat", "helicopter"],
     "mountain": ["search_and_rescue", "ambulance", "helicopter"],
-    "urban": ["ambulance", "search_and_rescue", "helicopter"],
-    "rural": ["ambulance", "helicopter"],
+    "urban":    ["ambulance", "search_and_rescue", "helicopter"],
+    "rural":    ["ambulance", "helicopter"],
+    "forest":   ["helicopter", "fire_helicopter"],
 }
 
 
@@ -106,6 +166,26 @@ def can_serve_terrain(resource_type: str, terrain_type: str) -> bool:
     return terrain_type in rt_info.get("terrain_capability", set())
 
 
+def is_applicable_for_disaster(resource_type: str, disaster_type: str) -> bool:
+    """Check if a resource type is relevant for the given disaster."""
+    if not disaster_type:
+        return True
+    rt_info = RESOURCE_TYPES.get(resource_type, {})
+    applicable = rt_info.get("applicable_disasters")
+    if not applicable:
+        return True
+    return disaster_type in applicable
+
+
+def get_preferred_resources(disaster_type: str, terrain_type: str) -> list[str]:
+    """Get the preferred resource order for a disaster+terrain combination."""
+    if disaster_type and disaster_type in DISASTER_TERRAIN_PREFERRED_RESOURCES:
+        terrain_prefs = DISASTER_TERRAIN_PREFERRED_RESOURCES[disaster_type]
+        if terrain_type in terrain_prefs:
+            return terrain_prefs[terrain_type]
+    return TERRAIN_PREFERRED_RESOURCES.get(terrain_type, ["ambulance", "helicopter"])
+
+
 def _get_hospital_resources(h) -> dict:
     """Extract resource inventory from a Hospital object.
 
@@ -151,12 +231,18 @@ def compute_edge_cost(h, z, context, resource_type="ambulance"):
 # Graph construction
 # ---------------------------------------------------------------------------
 
-def build_graph(zones, hospitals, context=None):
+def build_graph(zones, hospitals, context=None, disaster_type=None):
     context = context or {}
     G = nx.Graph()
 
     for h in hospitals:
         resources = _get_hospital_resources(h)
+        # Filter resources applicable for this disaster type
+        if disaster_type:
+            resources = {
+                rtype: count for rtype, count in resources.items()
+                if is_applicable_for_disaster(rtype, disaster_type)
+            }
         G.add_node(
             f"H:{h.hospital_id}",
             resources=resources,
@@ -168,7 +254,7 @@ def build_graph(zones, hospitals, context=None):
     for z in zones:
         G.add_node(
             f"Z:{z.zone_id}",
-            demand=z.medical_demand,
+            demand=z.demand,
             weight=zone_weight(z),
             terrain_type=z.terrain_type,
             lat=z.lat,
@@ -179,7 +265,8 @@ def build_graph(zones, hospitals, context=None):
         for z in zones:
             edge_data = {"costs": {}}
             road_blocked = is_road_blocked(h, z, context)
-            for rtype in _get_hospital_resources(h):
+            h_resources = G.nodes[f"H:{h.hospital_id}"].get("resources", {})
+            for rtype in h_resources:
                 if not can_serve_terrain(rtype, z.terrain_type):
                     continue
                 # Road blocked → only air/sea resources can pass
@@ -206,7 +293,7 @@ def build_graph(zones, hospitals, context=None):
 # Multi-resource allocation
 # ---------------------------------------------------------------------------
 
-def allocate_resources(G, zones, hospitals):
+def allocate_resources(G, zones, hospitals, disaster_type=None):
     results = []
 
     # Mutable inventory: {"H:H1": {"ambulance": 15, "helicopter": 1}, ...}
@@ -215,16 +302,18 @@ def allocate_resources(G, zones, hospitals):
         h_node = f"H:{h.hospital_id}"
         hospital_inv[h_node] = dict(G.nodes[h_node].get("resources", {"ambulance": h.ambulances}))
 
-    # Total supply = sum of ALL resource units
+    # Total supply = sum of demand-serving capacity across all resources
     total_supply = sum(
-        sum(inv.values()) for inv in hospital_inv.values()
+        count * RESOURCE_TYPES.get(rtype, {}).get("capacity_per_unit", 1)
+        for inv in hospital_inv.values()
+        for rtype, count in inv.items()
     )
     total_weight = sum(zone_weight(z) for z in zones)
 
     # Severity-driven target per zone
     zone_targets = {
         z.zone_id: min(
-            z.medical_demand,
+            z.demand,
             int(total_supply * zone_weight(z) / total_weight)
         )
         for z in zones
@@ -237,11 +326,15 @@ def allocate_resources(G, zones, hospitals):
         assignments = {}  # {"H1": {"ambulance": 5, "helicopter": 1}, ...}
 
         terrain = z.terrain_type
-        resource_order = TERRAIN_PREFERRED_RESOURCES.get(terrain, ["ambulance", "helicopter"])
+        resource_order = get_preferred_resources(disaster_type, terrain)
 
         for rtype in resource_order:
             if remaining <= 0:
                 break
+
+            capacity = RESOURCE_TYPES.get(rtype, {}).get("capacity_per_unit", 1)
+            if capacity <= 0:
+                continue
 
             # Hospitals that have this resource type AND can serve this zone's terrain
             candidates = []
@@ -258,9 +351,10 @@ def allocate_resources(G, zones, hospitals):
                 available = hospital_inv[h_node].get(rtype, 0)
                 if available <= 0:
                     continue
-                used = min(available, remaining)
+                units_needed = math.ceil(remaining / capacity)
+                used = min(available, units_needed)
                 hospital_inv[h_node][rtype] -= used
-                remaining -= used
+                remaining = max(0, remaining - used * capacity)
 
                 h_id = h_node.split(":")[1]
                 if h_id not in assignments:
@@ -272,7 +366,6 @@ def allocate_resources(G, zones, hospitals):
         for h_id, breakdown in assignments.items():
             assigned_list.append({
                 "hospital": h_id,
-                "ambulances": breakdown.get("ambulance", 0),
                 "resource_breakdown": breakdown,
             })
 
@@ -285,10 +378,14 @@ def allocate_resources(G, zones, hospitals):
         else:
             priority = "LOW"
 
-        # Confidence
-        total_assigned = sum(sum(bd.values()) for bd in assignments.values())
+        # Confidence (based on demand covered, not raw unit count)
+        total_demand_covered = sum(
+            count * RESOURCE_TYPES.get(rt, {}).get("capacity_per_unit", 1)
+            for bd in assignments.values()
+            for rt, count in bd.items()
+        )
         confidence = round(
-            total_assigned / z.medical_demand if z.medical_demand else 1,
+            min(1.0, total_demand_covered / z.demand) if z.demand else 1,
             2
         )
 
@@ -303,7 +400,7 @@ def allocate_resources(G, zones, hospitals):
             "priority": priority,
             "confidence": confidence,
             "assigned_resources": assigned_list,
-            "unserved": z.medical_demand - total_assigned,
+            "unserved": max(0, z.demand - total_demand_covered),
             "resource_summary": resource_summary,
         })
 
