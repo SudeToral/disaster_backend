@@ -398,9 +398,9 @@ def allocate_resources(G, zones, hospitals, disaster_type=None):
         results.append({
             "zone_id": z.zone_id,
             "priority": priority,
-            "confidence": confidence,
+            "planned_coverage": confidence,
             "assigned_resources": assigned_list,
-            "unserved": max(0, z.demand - total_demand_covered),
+            "allocation_gap": max(0, z.demand - total_demand_covered),
             "resource_summary": resource_summary,
         })
 
