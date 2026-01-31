@@ -469,11 +469,13 @@ class CrisisManagerAgent:
             returned_detail=returned_detail,
             demand_before=demand_before, demand_after=demand_after,
             status="active",
+            allocation_results=new_results,
         )
 
     def _build_round_response(
         self, crisis: dict, round_dispatches: list, returned_detail: list,
         demand_before: dict, demand_after: dict, status: str,
+        allocation_results: list = None,
     ) -> dict:
         """Build a standardized round response dict."""
         from app.optimizer.schemas import AVAILABLE_EVENT_TYPES
@@ -573,6 +575,7 @@ class CrisisManagerAgent:
             "continue_prompt": continue_prompt,
             "total_rounds_so_far": crisis["optimization_round"],
             "zone_summary": zone_summary,
+            "round_allocation": allocation_results or [],
             "events_active": crisis.get("events", []),
         }
 
