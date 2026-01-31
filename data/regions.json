@@ -1,0 +1,64 @@
+{
+  "regions": [
+    {
+      "region_id": "R1",
+      "name": "Central District",
+      "terrain_type": "urban",
+      "population_density_per_sq_km": 9000,
+      "area_sq_km": 6.0,
+      "total_population": 54000,
+      "characteristics": ["urban", "dense", "historic_buildings", "earthquake_vulnerable"],
+      "lat_center": 40.00,
+      "lon_center": 30.00,
+      "radius_km": 5.0
+    },
+    {
+      "region_id": "R2",
+      "name": "Harbor Bay",
+      "terrain_type": "coastal",
+      "population_density_per_sq_km": 2500,
+      "area_sq_km": 10.0,
+      "total_population": 25000,
+      "characteristics": ["coastal", "port_area", "flood_risk"],
+      "lat_center": 40.05,
+      "lon_center": 29.85,
+      "radius_km": 12.0
+    },
+    {
+      "region_id": "R3",
+      "name": "Pine Ridge",
+      "terrain_type": "mountain",
+      "population_density_per_sq_km": 400,
+      "area_sq_km": 15.0,
+      "total_population": 6000,
+      "characteristics": ["mountain", "forest", "limited_road_access", "landslide_risk", "fire_risk"],
+      "lat_center": 39.88,
+      "lon_center": 30.15,
+      "radius_km": 10.0
+    },
+    {
+      "region_id": "R4",
+      "name": "Flatlands",
+      "terrain_type": "rural",
+      "population_density_per_sq_km": 300,
+      "area_sq_km": 20.0,
+      "total_population": 6000,
+      "characteristics": ["rural", "agricultural", "flat_terrain", "flood_risk"],
+      "lat_center": 40.10,
+      "lon_center": 30.25,
+      "radius_km": 14.0
+    },
+    {
+      "region_id": "R5",
+      "name": "Ironworks District",
+      "terrain_type": "urban",
+      "population_density_per_sq_km": 5000,
+      "area_sq_km": 8.0,
+      "total_population": 40000,
+      "characteristics": ["urban", "industrial", "suburban", "earthquake_vulnerable"],
+      "lat_center": 39.95,
+      "lon_center": 30.10,
+      "radius_km": 7.0
+    }
+  ]
+}
