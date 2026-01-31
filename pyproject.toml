@@ -15,4 +15,13 @@ dependencies = [
   "httpx",
   "python-multipart>=0.0.22",
   "ultralytics>=8.4.9",
+  "xarray>=2025.6.1",
+  "rioxarray>=0.19.0",
+  "geopandas>=1.1.2",
+  "rasterstats>=0.20.0",
+  "pyproj>=3.7.1",
+  "shapely>=2.1.2",
+  "fiona>=1.10.1",
+  "pyogrio>=0.12.1",
+  "netcdf4>=1.7.3",
 ]

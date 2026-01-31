@@ -19,6 +19,8 @@ from fastapi import UploadFile, File, Form, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+from app.services.flood_river_risk import run_river_flood_risk
+
 
 from app.model.model import predict_with_type
 
@@ -232,3 +234,21 @@ async def predict(
         response["overlay_url"] = f"/uploads/overlay/{request_id}_overlay.png"
 
     return JSONResponse(content=response)
+
+@app.get("/flood/risk")
+async def flood_risk():
+    """
+    Turkey provinces river-flood risk based on GloFAS discharge + return periods (<=10y).
+    Requires:
+      - FORECAST_NC
+      - thresholds (2/5/10y)
+      - gadm41_TUR_2.json
+    Paths are controlled by env vars inside flood_river_risk.py
+    """
+    try:
+        payload = run_river_flood_risk()
+        return JSONResponse(content=payload)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Flood risk computation failed: {str(e)}")
