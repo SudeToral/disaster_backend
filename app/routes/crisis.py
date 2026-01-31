@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from app.store import data_store
 from app.optimizer.schemas import (
-    BatchReturnRequest, Zone, Hospital,
+    BatchReturnRequest, Zone, Hospital, NextRoundRequest,
 )
 from app.optimizer.allocation import build_graph, allocate_resources, events_to_context, zone_weight
 from app.config import load_hospitals_with_resources
@@ -112,6 +112,27 @@ def reoptimize():
             for z in zones
         ],
     }
+
+
+@router.post("/next-round")
+def next_round(req: NextRoundRequest = None):
+    """Execute the next round of crisis management interactively.
+
+    Accepts optional new events that get appended to the crisis before
+    reoptimization. Returns round results, LLM reasoning, and prompts
+    for the next action.
+    """
+    crisis = data_store.get_crisis()
+    if not crisis:
+        raise HTTPException(404, "No active crisis")
+
+    if req and req.new_events:
+        new_event_dicts = [e.model_dump() for e in req.new_events]
+        data_store.append_events(new_event_dicts)
+
+    from app.agents.crisis_manager_agent import CrisisManagerAgent
+    agent = CrisisManagerAgent()
+    return agent.run_single_round()
 
 
 @router.get("/dispatches")

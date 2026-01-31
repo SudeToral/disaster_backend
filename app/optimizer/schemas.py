@@ -49,9 +49,9 @@ class AssignedResource(BaseModel):
 class ZoneResult(BaseModel):
     zone_id: str
     priority: str
-    confidence: float
+    planned_coverage: float
     assigned_resources: List[AssignedResource]
-    unserved: int = 0
+    allocation_gap: int = 0
     resource_summary: dict = {}          # e.g. {"ambulance": 10, "helicopter": 2}
 
 
@@ -87,3 +87,32 @@ class DispatchReturnItem(BaseModel):
 
 class BatchReturnRequest(BaseModel):
     returns: List[DispatchReturnItem]
+
+
+class NextRoundRequest(BaseModel):
+    """Request body for POST /crisis/next-round."""
+    new_events: List[Event] = []
+
+
+AVAILABLE_EVENT_TYPES = [
+    {
+        "event_type": "road_collapse",
+        "description": "A road between a hospital and zone has collapsed",
+        "params": {"hospital_id": "string (required)", "zone_id": "string (required)"},
+    },
+    {
+        "event_type": "bridge_out",
+        "description": "A bridge between a hospital and zone is out",
+        "params": {"hospital_id": "string (required)", "zone_id": "string (required)"},
+    },
+    {
+        "event_type": "weather",
+        "description": "Severe weather conditions affecting all routes",
+        "params": {"penalty": "float (default 2.0, higher = worse)"},
+    },
+    {
+        "event_type": "flood",
+        "description": "Flooding affecting route accessibility",
+        "params": {"severity_factor": "float (default 5.0, higher = worse)"},
+    },
+]

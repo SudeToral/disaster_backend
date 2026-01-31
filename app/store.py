@@ -136,9 +136,33 @@ class DataStore:
 
     # ---- Crisis Session ----
 
+    def _force_end_active_crisis(self):
+        """Return all dispatched resources and end the active crisis."""
+        if not self.active_crisis:
+            return
+        for d in self.active_crisis["dispatches"]:
+            if d["status"] == "dispatched":
+                try:
+                    self.return_resource(
+                        d["hospital_id"], d["resource_type"], d["count"]
+                    )
+                    d["status"] = "returned"
+                except Exception:
+                    pass
+        self.active_crisis["status"] = "auto_ended"
+        self.active_crisis["ended_at"] = datetime.now(timezone.utc).isoformat()
+        self.active_crisis = None
+
     def start_crisis(self, disaster_type: str, zones: list[dict],
                      allocation_results: list[dict], events: list = None) -> dict:
-        """Start a new crisis session from optimization results."""
+        """Start a new crisis session from optimization results.
+
+        If a crisis is already active, auto-ends it first (returning all
+        dispatched resources to inventory).
+        """
+        if self.active_crisis is not None:
+            self._force_end_active_crisis()
+
         crisis_id = str(uuid.uuid4())[:8]
         zone_states = {}
         for z in zones:
@@ -283,6 +307,23 @@ class DataStore:
             zs["remaining_demand"] <= 0
             for zs in self.active_crisis["zone_states"].values()
         )
+
+    def append_events(self, new_events: list[dict]):
+        """Append new events to the active crisis event list."""
+        if not self.active_crisis:
+            raise ValueError("No active crisis")
+        for event in new_events:
+            e = event if isinstance(event, dict) else event.model_dump()
+            self.active_crisis["events"].append(e)
+
+    def get_round_dispatches(self, round_number: int) -> list[dict]:
+        """Get all dispatches created in a specific optimization round."""
+        if not self.active_crisis:
+            return []
+        return [
+            d for d in self.active_crisis["dispatches"]
+            if d.get("optimization_round") == round_number
+        ]
 
 
 # Singleton instance

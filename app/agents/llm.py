@@ -14,10 +14,19 @@ def get_llm(model: str | None = None) -> ChatOllama:
 
 
 async def is_ollama_available() -> bool:
-    """Check if the Ollama server is reachable."""
+    """Check if the Ollama server is reachable (async version)."""
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             resp = await client.get(f"{OLLAMA_BASE_URL}/api/tags")
             return resp.status_code == 200
+    except (httpx.ConnectError, httpx.TimeoutException):
+        return False
+
+
+def is_ollama_available_sync() -> bool:
+    """Check if the Ollama server is reachable (sync version)."""
+    try:
+        resp = httpx.get(f"{OLLAMA_BASE_URL}/api/tags", timeout=5.0)
+        return resp.status_code == 200
     except (httpx.ConnectError, httpx.TimeoutException):
         return False

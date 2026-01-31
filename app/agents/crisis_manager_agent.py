@@ -1,5 +1,4 @@
 import json
-import asyncio
 
 from langchain_core.messages import HumanMessage
 
@@ -9,7 +8,7 @@ from app.optimizer.allocation import (
     build_graph, allocate_resources, events_to_context, RESOURCE_TYPES,
 )
 from app.config import load_hospitals_with_resources
-from app.agents.llm import get_llm, is_ollama_available
+from app.agents.llm import get_llm, is_ollama_available_sync
 
 
 CRISIS_ANALYSIS_PROMPT = (
@@ -26,6 +25,19 @@ CRISIS_ANALYSIS_PROMPT = (
     "Rules:\n"
     "- Be specific: reference zone IDs, hospital IDs, and resource types.\n"
     "- Keep each section to 2-3 sentences.\n"
+    "- Write in English."
+)
+
+ROUND_ANALYSIS_PROMPT = (
+    "You are a disaster crisis analyst. Analyze what happened in this single round "
+    "of crisis response. Provide:\n"
+    "1. What resources were deployed/returned and their effect on demand.\n"
+    "2. Which zones are still struggling and why.\n"
+    "3. A recommendation: should more resources be sent, or should the user add "
+    "events (road_collapse, weather, etc.) to simulate new obstacles?\n\n"
+    "Rules:\n"
+    "- Reference specific zone IDs, hospital IDs, and resource types.\n"
+    "- Keep it to 3-5 sentences.\n"
     "- Write in English."
 )
 
@@ -60,8 +72,8 @@ class CrisisManagerAgent:
             zone_timelines[zid] = [{
                 "round": 0,
                 "event": "initial",
-                "demand_before": zs["initial_demand"],
-                "demand_after": zs["initial_demand"],
+                "remaining_before_round": zs["initial_demand"],
+                "remaining_after_round": zs["initial_demand"],
                 "served_this_round": 0,
             }]
 
@@ -110,29 +122,29 @@ class CrisisManagerAgent:
             }
             total_remaining = sum(demand_after_by_zone.values())
 
-            # --- Per-zone demand deltas ---
-            zone_demand_deltas = {}
+            # --- Per-zone round progress ---
+            zone_round_progress = {}
             for zid in demand_before_by_zone:
                 before = demand_before_by_zone[zid]
                 after = demand_after_by_zone.get(zid, 0)
-                zone_demand_deltas[zid] = {
-                    "demand_before": before,
-                    "demand_after": after,
+                zone_round_progress[zid] = {
+                    "remaining_before_round": before,
+                    "remaining_after_round": after,
                     "served_this_round": before - after,
                 }
 
             bottleneck_zones = [
-                zid for zid, delta in zone_demand_deltas.items()
-                if delta["demand_after"] > 0
+                zid for zid, delta in zone_round_progress.items()
+                if delta["remaining_after_round"] > 0
             ]
 
             # --- Update zone timelines ---
-            for zid, delta in zone_demand_deltas.items():
+            for zid, delta in zone_round_progress.items():
                 zone_timelines[zid].append({
                     "round": crisis["optimization_round"],
                     "event": "return",
-                    "demand_before": delta["demand_before"],
-                    "demand_after": delta["demand_after"],
+                    "remaining_before_round": delta["remaining_before_round"],
+                    "remaining_after_round": delta["remaining_after_round"],
                     "served_this_round": delta["served_this_round"],
                 })
 
@@ -143,7 +155,7 @@ class CrisisManagerAgent:
                 "total_demand_served": demand_before_total - total_remaining,
                 "remaining_demand_after_return": total_remaining,
                 "dispatches_returned_detail": returned_dispatches_detail,
-                "zone_demand_deltas": zone_demand_deltas,
+                "zone_round_progress": zone_round_progress,
                 "bottleneck_zones": bottleneck_zones,
             }
 
@@ -209,7 +221,7 @@ class CrisisManagerAgent:
         for zid, timeline in zone_timelines.items():
             fully_served_round = None
             for entry in timeline:
-                if entry["demand_after"] <= 0 and entry["event"] != "initial":
+                if entry["remaining_after_round"] <= 0 and entry["event"] != "initial":
                     fully_served_round = entry["round"]
                     break
             zone_timelines[zid] = {
@@ -308,17 +320,7 @@ class CrisisManagerAgent:
     def _generate_llm_analysis(self, lifecycle_data: dict, disaster_type: str) -> str:
         """Call LLM once to analyze the complete lifecycle."""
         try:
-            try:
-                loop = asyncio.get_running_loop()
-                import concurrent.futures
-                with concurrent.futures.ThreadPoolExecutor() as pool:
-                    available = loop.run_in_executor(
-                        pool, lambda: asyncio.run(is_ollama_available()),
-                    )
-            except RuntimeError:
-                available = asyncio.run(is_ollama_available())
-
-            if not available:
+            if not is_ollama_available_sync():
                 return "LLM analysis unavailable: Ollama server not reachable."
 
             summary = {
@@ -356,6 +358,239 @@ class CrisisManagerAgent:
             llm = get_llm()
             response = llm.invoke([
                 HumanMessage(content=f"{CRISIS_ANALYSIS_PROMPT}\n\n{prompt}"),
+            ])
+            content = response.content
+            return content if isinstance(content, str) else str(content)
+
+        except Exception as e:
+            return f"LLM analysis unavailable: {e}"
+
+    # ------------------------------------------------------------------
+    # Interactive single-round execution
+    # ------------------------------------------------------------------
+
+    def run_single_round(self) -> dict:
+        """Execute exactly one return-and-reoptimize round.
+
+        Returns structured data about what happened in this round,
+        including LLM reasoning and information for the frontend.
+        """
+        crisis = data_store.get_crisis()
+        if not crisis:
+            return {"error": "No active crisis"}
+
+        if data_store.is_crisis_resolved():
+            data_store.end_crisis()
+            return self._build_round_response(
+                crisis, round_dispatches=[], returned_detail=[],
+                demand_before={}, demand_after={}, status="resolved",
+            )
+
+        # --- Find active dispatches ---
+        active = [
+            d for d in crisis["dispatches"]
+            if d["status"] == "dispatched"
+        ]
+
+        if not active:
+            return self._build_round_response(
+                crisis, round_dispatches=[], returned_detail=[],
+                demand_before={}, demand_after={}, status="stalled",
+            )
+
+        # --- Snapshot demand BEFORE returns ---
+        demand_before = {
+            zid: zs["remaining_demand"]
+            for zid, zs in crisis["zone_states"].items()
+        }
+
+        # --- Batch return all active dispatches ---
+        returned_detail = []
+        for d in active:
+            try:
+                capacity = RESOURCE_TYPES.get(
+                    d["resource_type"], {},
+                ).get("capacity_per_unit", 1)
+                served = d["count"] * capacity
+                data_store.return_dispatch(d["dispatch_id"], served)
+                returned_detail.append({
+                    "dispatch_id": d["dispatch_id"],
+                    "hospital_id": d["hospital_id"],
+                    "zone_id": d["zone_id"],
+                    "resource_type": d["resource_type"],
+                    "count": d["count"],
+                    "capacity_served": served,
+                })
+            except ValueError:
+                pass
+
+        # --- Snapshot demand AFTER returns ---
+        demand_after = {
+            zid: zs["remaining_demand"]
+            for zid, zs in crisis["zone_states"].items()
+        }
+
+        # --- Check if resolved after returns ---
+        if data_store.is_crisis_resolved():
+            data_store.end_crisis()
+            return self._build_round_response(
+                crisis, round_dispatches=[], returned_detail=returned_detail,
+                demand_before=demand_before, demand_after=demand_after,
+                status="resolved",
+            )
+
+        # --- Reoptimize for remaining demand ---
+        unserved = data_store.get_unserved_zones()
+        if not unserved:
+            return self._build_round_response(
+                crisis, round_dispatches=[], returned_detail=returned_detail,
+                demand_before=demand_before, demand_after=demand_after,
+                status="resolved",
+            )
+
+        zones = [Zone(**z) for z in unserved]
+        hospitals = [Hospital(**h) for h in load_hospitals_with_resources()]
+        disaster_type = crisis.get("disaster_type")
+        context = (
+            events_to_context(crisis.get("events", []))
+            if crisis.get("events") else {}
+        )
+        G = build_graph(zones, hospitals, context, disaster_type=disaster_type)
+        new_results = allocate_resources(
+            G, zones, hospitals, disaster_type=disaster_type,
+        )
+
+        dispatches_before_count = len(crisis["dispatches"])
+        data_store.record_reoptimization(new_results)
+        round_dispatches = crisis["dispatches"][dispatches_before_count:]
+
+        return self._build_round_response(
+            crisis, round_dispatches=round_dispatches,
+            returned_detail=returned_detail,
+            demand_before=demand_before, demand_after=demand_after,
+            status="active",
+        )
+
+    def _build_round_response(
+        self, crisis: dict, round_dispatches: list, returned_detail: list,
+        demand_before: dict, demand_after: dict, status: str,
+    ) -> dict:
+        """Build a standardized round response dict."""
+        from app.optimizer.schemas import AVAILABLE_EVENT_TYPES
+
+        zone_round_progress = {}
+        for zid in crisis["zone_states"]:
+            before = demand_before.get(zid, crisis["zone_states"][zid]["remaining_demand"])
+            after = demand_after.get(zid, crisis["zone_states"][zid]["remaining_demand"])
+            zone_round_progress[zid] = {
+                "remaining_before_round": before,
+                "remaining_after_round": after,
+                "served_this_round": before - after,
+            }
+
+        bottleneck_zones = [
+            zid for zid, delta in zone_round_progress.items()
+            if delta["remaining_after_round"] > 0
+        ]
+
+        total_served = sum(d["served_this_round"] for d in zone_round_progress.values())
+        total_remaining = sum(
+            zs["remaining_demand"] for zs in crisis["zone_states"].values()
+        )
+
+        zone_summary = {
+            zid: {
+                "initial_demand": zs["initial_demand"],
+                "served": zs["served"],
+                "remaining": zs["remaining_demand"],
+            }
+            for zid, zs in crisis["zone_states"].items()
+        }
+
+        # Generate LLM reasoning for this round
+        round_data_for_llm = {
+            "round": crisis["optimization_round"],
+            "status": status,
+            "returned_dispatches": returned_detail,
+            "new_dispatches": [
+                {
+                    "hospital_id": d["hospital_id"],
+                    "zone_id": d["zone_id"],
+                    "resource_type": d["resource_type"],
+                    "count": d["count"],
+                }
+                for d in round_dispatches
+            ],
+            "zone_round_progress": zone_round_progress,
+            "bottleneck_zones": bottleneck_zones,
+            "events": crisis.get("events", []),
+        }
+        round_reasoning = self._generate_round_reasoning(
+            round_data_for_llm, crisis.get("disaster_type", "unknown"),
+        )
+
+        # Build continue prompt
+        if status == "resolved":
+            continue_prompt = "Crisis resolved. All zone demands have been met."
+        elif status == "stalled":
+            continue_prompt = (
+                "No active dispatches remaining. "
+                "Consider ending the crisis or adding new resources."
+            )
+        else:
+            continue_prompt = (
+                f"Round {crisis['optimization_round']} complete. "
+                f"{total_remaining} demand remaining across "
+                f"{len(bottleneck_zones)} zone(s). "
+                f"Continue to next round? You can also add new events "
+                f"to simulate changing conditions."
+            )
+
+        return {
+            "crisis_id": crisis["crisis_id"],
+            "round_number": crisis["optimization_round"],
+            "status": status,
+            "disaster_type": crisis.get("disaster_type", "unknown"),
+            "dispatches": [
+                {
+                    "dispatch_id": d["dispatch_id"],
+                    "hospital_id": d["hospital_id"],
+                    "zone_id": d["zone_id"],
+                    "resource_type": d["resource_type"],
+                    "count": d["count"],
+                    "capacity_served": d.get("capacity_served", d["count"]),
+                    "status": d["status"],
+                }
+                for d in round_dispatches
+            ],
+            "returned_dispatches": returned_detail,
+            "demand_served_this_round": total_served,
+            "remaining_demand": total_remaining,
+            "zone_round_progress": zone_round_progress,
+            "bottleneck_zones": bottleneck_zones,
+            "round_reasoning": round_reasoning,
+            "available_event_types": AVAILABLE_EVENT_TYPES,
+            "continue_prompt": continue_prompt,
+            "total_rounds_so_far": crisis["optimization_round"],
+            "zone_summary": zone_summary,
+            "events_active": crisis.get("events", []),
+        }
+
+    def _generate_round_reasoning(self, round_data: dict, disaster_type: str) -> str:
+        """Generate LLM analysis for a single round."""
+        try:
+            if not is_ollama_available_sync():
+                return "LLM analysis unavailable: Ollama server not reachable."
+
+            prompt = (
+                f"Disaster type: {disaster_type}\n"
+                f"Round data:\n{json.dumps(round_data, ensure_ascii=False, indent=2)}\n\n"
+                f"Please analyze this round."
+            )
+
+            llm = get_llm()
+            response = llm.invoke([
+                HumanMessage(content=f"{ROUND_ANALYSIS_PROMPT}\n\n{prompt}"),
             ])
             content = response.content
             return content if isinstance(content, str) else str(content)

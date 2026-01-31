@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from app.optimizer.schemas import AllocationRequest, ZoneResult, Hospital
+from app.optimizer.schemas import AllocationRequest, ZoneResult, Hospital, AVAILABLE_EVENT_TYPES
 from app.optimizer.allocation import build_graph, allocate_resources, events_to_context
 from app.optimizer.impact import estimate_impact
 from app.agents.orchestrator import orchestrator_graph
@@ -101,11 +101,64 @@ async def optimize(req: AllocationRequest):
         events=[e.model_dump() for e in req.events],
     )
 
-    # --- 4. Auto-resolve crisis lifecycle ---
-    crisis_manager = CrisisManagerAgent(max_rounds=20)
-    lifecycle = crisis_manager.run_lifecycle()
+    # --- 4. Build interactive first-round response (no auto-resolve) ---
+    round_dispatches = data_store.get_round_dispatches(round_number=1)
 
-    # --- 5. Build response ---
+    total_remaining = sum(
+        zs["remaining_demand"] for zs in crisis["zone_states"].values()
+    )
+    zone_summary = {
+        zid: {
+            "initial_demand": zs["initial_demand"],
+            "served": zs["served"],
+            "remaining": zs["remaining_demand"],
+        }
+        for zid, zs in crisis["zone_states"].items()
+    }
+
+    is_resolved = data_store.is_crisis_resolved()
+    status = "resolved" if is_resolved else "active"
+
+    if is_resolved:
+        continue_prompt = "Crisis resolved on initial allocation. All demands met."
+        data_store.end_crisis()
+    else:
+        bottleneck_count = sum(
+            1 for zs in crisis["zone_states"].values()
+            if zs["remaining_demand"] > 0
+        )
+        continue_prompt = (
+            f"Initial allocation complete. {total_remaining} demand remaining "
+            f"across {bottleneck_count} zone(s). "
+            f"Continue to next round? You can also add new events."
+        )
+
+    # Generate LLM reasoning for the initial allocation
+    crisis_manager = CrisisManagerAgent()
+    initial_reasoning = crisis_manager._generate_round_reasoning(
+        {
+            "round": 1,
+            "status": status,
+            "returned_dispatches": [],
+            "new_dispatches": [
+                {
+                    "hospital_id": d["hospital_id"],
+                    "zone_id": d["zone_id"],
+                    "resource_type": d["resource_type"],
+                    "count": d["count"],
+                }
+                for d in round_dispatches if d["status"] != "failed"
+            ],
+            "zone_round_progress": {},
+            "bottleneck_zones": [
+                zid for zid, zs in crisis["zone_states"].items()
+                if zs["remaining_demand"] > 0
+            ],
+            "events": crisis.get("events", []),
+        },
+        req.disaster_type,
+    )
+
     results = [
         ZoneResult(**r) if isinstance(r, dict) else r
         for r in allocation_results
@@ -113,12 +166,32 @@ async def optimize(req: AllocationRequest):
 
     return {
         "crisis_id": crisis["crisis_id"],
+        "round_number": 1,
+        "status": status,
         "disaster_type": req.disaster_type,
-        "initial_allocation": [r.model_dump() if hasattr(r, "model_dump") else r for r in results],
-        "lifecycle": lifecycle,
+        "initial_allocation": [
+            r.model_dump() if hasattr(r, "model_dump") else r for r in results
+        ],
+        "dispatches": [
+            {
+                "dispatch_id": d["dispatch_id"],
+                "hospital_id": d["hospital_id"],
+                "zone_id": d["zone_id"],
+                "resource_type": d["resource_type"],
+                "count": d["count"],
+                "capacity_served": d.get("capacity_served", d["count"]),
+                "status": d["status"],
+            }
+            for d in round_dispatches
+        ],
+        "remaining_demand": total_remaining,
+        "zone_summary": zone_summary,
         "agent_reasoning": agent_reasoning,
         "db_reasoning": db_reasoning,
-        "crisis_manager_reasoning": lifecycle.get("crisis_manager_reasoning", ""),
+        "round_reasoning": initial_reasoning,
         "events_applied": events_applied,
+        "events_active": crisis.get("events", []),
         "fallback_used": fallback_used,
+        "available_event_types": AVAILABLE_EVENT_TYPES,
+        "continue_prompt": continue_prompt,
     }

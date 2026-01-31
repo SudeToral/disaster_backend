@@ -1,9 +1,8 @@
-import asyncio
 from langgraph.graph import StateGraph, END
 from app.agents.state import AgentState
 from app.agents.database_agent import database_agent_node
 from app.agents.strategy_agent import strategy_agent_node
-from app.agents.llm import is_ollama_available
+from app.agents.llm import is_ollama_available_sync
 from app.optimizer.allocation import build_graph, allocate_resources, events_to_context
 
 
@@ -33,15 +32,7 @@ def fallback_node(state: dict) -> dict:
 
 def check_ollama_route(state: dict) -> str:
     """Conditional edge: route to agents or fallback based on Ollama availability."""
-    try:
-        loop = asyncio.get_running_loop()
-        import concurrent.futures
-        with concurrent.futures.ThreadPoolExecutor() as pool:
-            available = loop.run_in_executor(pool, lambda: asyncio.run(is_ollama_available()))
-    except RuntimeError:
-        available = asyncio.run(is_ollama_available())
-
-    if available:
+    if is_ollama_available_sync():
         return "database_agent"
     return "fallback"
 
