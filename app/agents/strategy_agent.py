@@ -55,8 +55,9 @@ def strategy_agent_node(state: dict) -> dict:
                 events_applied.append(f"{e.get('event_type')}: {e.get('params')}")
 
     # --- 2. Build graph & allocate ---
-    G = build_graph(zones, hospitals, context)
-    allocation_results = allocate_resources(G, zones, hospitals)
+    disaster_type = state.get("disaster_type")
+    G = build_graph(zones, hospitals, context, disaster_type=disaster_type)
+    allocation_results = allocate_resources(G, zones, hospitals, disaster_type=disaster_type)
 
     # --- 3. Ask LLM to analyze the results ---
     def serialize(obj):

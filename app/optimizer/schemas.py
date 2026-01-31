@@ -6,7 +6,7 @@ class Zone(BaseModel):
     zone_id: str
     damage_severity: float        # 0–1
     population_density: float     # 0–1
-    medical_demand: int           # abstract units
+    demand: int                   # abstract units (meaning depends on disaster type)
     lat: float
     lon: float
     terrain_type: str = "urban"   # coastal | mountain | urban | rural
@@ -31,17 +31,18 @@ class Event(BaseModel):
 
 
 class AllocationRequest(BaseModel):
-    disaster_type: str
-    zones: List[Zone]
+    disaster_type: str                                # earthquake | flood | fire
+    zones: List[Zone] = []
     events: List[Event] = []
     use_agent: bool = True
-    coordinates: Optional[List[float]] = None     # [lat, lon] epicenter
+    coordinates: Optional[List[float]] = None         # [lat, lon] epicenter
+    severity: Optional[float] = None                  # 0-1 disaster severity from external model
+    impact_radius_km: Optional[float] = None          # override impact radius
     natural_language_query: Optional[str] = None
 
 
 class AssignedResource(BaseModel):
     hospital: str
-    ambulances: int = 0
     resource_breakdown: dict = {}        # e.g. {"ambulance": 5, "helicopter": 1}
 
 
@@ -60,3 +61,29 @@ class AgentOptimizeResponse(BaseModel):
     events_applied: List[str] = []
     data_sources: List[str] = []
     fallback_used: bool = False
+
+
+class ImpactEstimateRequest(BaseModel):
+    epicenter: List[float]                         # [lat, lon]
+    disaster_type: str                             # earthquake | flood | fire
+    severity: float = 0.5                          # 0-1 from external model
+    impact_radius_km: Optional[float] = None       # auto-calculated if None
+
+
+class DispatchRequest(BaseModel):
+    resource_type: str
+    count: int = 1
+
+
+class ReturnRequest(BaseModel):
+    resource_type: str
+    count: int = 1
+
+
+class DispatchReturnItem(BaseModel):
+    dispatch_id: str
+    served_demand: int              # how many demand units this dispatch served
+
+
+class BatchReturnRequest(BaseModel):
+    returns: List[DispatchReturnItem]

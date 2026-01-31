@@ -32,7 +32,7 @@ def build_graph_with_context(zones_json: str, hospitals_json: str, context_json:
 
     Args:
         zones_json: JSON array of zone objects with zone_id, damage_severity,
-                    population_density, medical_demand, lat, lon.
+                    population_density, demand, lat, lon.
         hospitals_json: JSON array of hospital objects with hospital_id,
                        ambulances, lat, lon.
         context_json: JSON object with optional keys: blocked_roads (array),

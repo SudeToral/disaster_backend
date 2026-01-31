@@ -12,9 +12,10 @@ def fallback_node(state: dict) -> dict:
     zones = state.get("zones", [])
     hospitals = state.get("enriched_hospitals") or state.get("hospitals", [])
     events = state.get("events", [])
+    disaster_type = state.get("disaster_type")
     context = events_to_context(events) if events else {}
-    G = build_graph(zones, hospitals, context)
-    results = allocate_resources(G, zones, hospitals)
+    G = build_graph(zones, hospitals, context, disaster_type=disaster_type)
+    results = allocate_resources(G, zones, hospitals, disaster_type=disaster_type)
 
     applied = [
         f"{e.event_type}: {e.params}" if hasattr(e, "event_type")

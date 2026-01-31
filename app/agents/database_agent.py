@@ -1,30 +1,18 @@
 import json
-import math
 from langchain_core.messages import HumanMessage
 from app.agents.llm import get_llm
-from app.config import DATA_DIR
-
-
-def _load_json(filename: str) -> dict:
-    path = DATA_DIR / filename
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-
-def _euclidean_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    deg = math.sqrt((lat1 - lat2) ** 2 + (lon1 - lon2) ** 2)
-    return deg * 111.0
+from app.store import data_store
 
 
 ANALYSIS_PROMPT = """You are a disaster response database analyst. You are given
 region data, nearby hospitals, and resource inventories for a disaster scenario.
 Provide a brief summary (3-5 sentences) of the available resources and any
-concerns (e.g. coastal region but no marine ambulances nearby, limited capacity).
+concerns (e.g. flood zone but no rescue boats nearby, fire area but no fire trucks, limited capacity).
 Write in English."""
 
 
 def database_agent_node(state: dict) -> dict:
-    """LangGraph node: fetches relevant data programmatically, then asks LLM to summarize."""
+    """LangGraph node: fetches relevant data from the store, then asks LLM to summarize."""
 
     coords = state.get("coordinates")
     zone_terrains = []
@@ -35,63 +23,49 @@ def database_agent_node(state: dict) -> dict:
     # --- 1. Determine region ---
     region_info = {"region_id": "unknown", "terrain_type": "unknown", "characteristics": []}
     if coords:
-        regions_data = _load_json("regions.json")
-        best = None
-        best_dist = float("inf")
-        for r in regions_data["regions"]:
-            dist = _euclidean_km(r["lat_center"], r["lon_center"], coords[0], coords[1])
-            if dist <= r["radius_km"] and dist < best_dist:
-                best = r
-                best_dist = dist
-        if best:
-            region_info = best
+        region = data_store.get_region_by_coords(coords[0], coords[1])
+        if region:
+            region_info = region
 
     terrain_type = region_info.get("terrain_type", "unknown")
     characteristics = region_info.get("characteristics", [])
 
     # --- 2. Fetch nearby hospitals (20km default, expand to 50km if few) ---
-    hospitals_data = _load_json("hospitals.json")
     radius_km = 20.0
     nearby = []
 
     if coords:
-        for h in hospitals_data["hospitals"]:
-            dist = _euclidean_km(h["lat"], h["lon"], coords[0], coords[1])
-            if dist <= radius_km:
-                h_copy = dict(h)
-                h_copy["distance_km"] = round(dist, 2)
-                nearby.append(h_copy)
+        nearby = data_store.get_nearby_hospitals(coords[0], coords[1], radius_km)
 
         # Expand radius if too few results
         if len(nearby) < 3:
             radius_km = 50.0
-            nearby = []
-            for h in hospitals_data["hospitals"]:
-                dist = _euclidean_km(h["lat"], h["lon"], coords[0], coords[1])
-                if dist <= radius_km:
-                    h_copy = dict(h)
-                    h_copy["distance_km"] = round(dist, 2)
-                    nearby.append(h_copy)
-
-        nearby.sort(key=lambda x: x["distance_km"])
+            nearby = data_store.get_nearby_hospitals(coords[0], coords[1], radius_km)
     else:
-        nearby = hospitals_data["hospitals"]
+        nearby = data_store.get_hospitals_with_resources()
 
-    # --- 3. If coastal, also fetch specialized facilities ---
+    # --- 3. Fetch specialized facilities based on disaster type ---
+    disaster_type = state.get("disaster_type", "")
     specialized = []
-    if terrain_type == "coastal" or "coastal" in characteristics:
-        for h in hospitals_data["hospitals"]:
-            if h.get("hospital_type") in ("coast_guard", "marine_ambulance"):
-                if h["hospital_id"] not in {n["hospital_id"] for n in nearby}:
-                    specialized.append(h)
+    nearby_ids = {n["hospital_id"] for n in nearby}
 
-    # --- 4. Fetch resource inventory for all relevant hospitals ---
-    resources_data = _load_json("resources.json")
-    inventory = resources_data.get("inventory", {})
+    # Disaster-specific specialized facility types
+    specialized_types = []
+    if terrain_type == "coastal" or "coastal" in characteristics:
+        specialized_types.append("coast_guard")
+    if disaster_type == "fire":
+        specialized_types.append("fire_station")
+    if disaster_type in ("earthquake", "fire"):
+        specialized_types.append("helibase")
+
+    for htype in specialized_types:
+        for h in data_store.get_hospitals_by_type(htype):
+            if h["hospital_id"] not in nearby_ids:
+                h_copy = dict(h)
+                h_copy["resources"] = data_store.get_resources(h["hospital_id"])
+                specialized.append(h_copy)
 
     all_hospitals = nearby + specialized
-    for h in all_hospitals:
-        h["resources"] = inventory.get(h["hospital_id"], {})
 
     # Deduplicate
     seen_ids = set()
@@ -99,9 +73,12 @@ def database_agent_node(state: dict) -> dict:
     for h in all_hospitals:
         if h["hospital_id"] not in seen_ids:
             seen_ids.add(h["hospital_id"])
+            # Ensure resources are attached
+            if "resources" not in h:
+                h["resources"] = data_store.get_resources(h["hospital_id"])
             enriched_hospitals.append(h)
 
-    # --- 5. Ask LLM to summarize findings ---
+    # --- 4. Ask LLM to summarize findings ---
     summary_data = {
         "region": region_info,
         "terrain_type": terrain_type,
@@ -136,7 +113,7 @@ def database_agent_node(state: dict) -> dict:
     except Exception as e:
         db_reasoning = f"Data fetched: {len(enriched_hospitals)} hospitals in {terrain_type} region. LLM summary unavailable: {e}"
 
-    # --- 6. Enrich zone terrains from region data ---
+    # --- 5. Enrich zone terrains from region data ---
     enriched_zones = []
     for z in state.get("zones", []):
         if hasattr(z, "model_copy"):
@@ -149,14 +126,10 @@ def database_agent_node(state: dict) -> dict:
             zone_lat = zc.lat if hasattr(zc, "lat") else zc.get("lat")
             zone_lon = zc.lon if hasattr(zc, "lon") else zc.get("lon")
             if zone_lat and zone_lon:
-                # Find matching region for zone coordinates
                 detected = region_info.get("terrain_type", "urban")
-                # Check per-zone: zone might be in a different region than epicenter
-                for r in _load_json("regions.json")["regions"]:
-                    d = _euclidean_km(r["lat_center"], r["lon_center"], zone_lat, zone_lon)
-                    if d <= r["radius_km"]:
-                        detected = r["terrain_type"]
-                        break
+                region_match = data_store.get_region_by_coords(zone_lat, zone_lon)
+                if region_match:
+                    detected = region_match["terrain_type"]
                 if hasattr(zc, "terrain_type"):
                     zc.terrain_type = detected
                 elif isinstance(zc, dict):
