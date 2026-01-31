@@ -230,27 +230,6 @@ async def optimize(req: AllocationRequest):
         "continue_prompt": continue_prompt,
     }
 
-    try:
-        final_state = orchestrator_graph.invoke(initial_state)
-        return AgentOptimizeResponse(
-            results=[ZoneResult(**r) if isinstance(r, dict) else r
-                     for r in final_state.get("allocation_results", [])],
-            agent_reasoning=final_state.get("strategy_reasoning", ""),
-            events_applied=final_state.get("events_applied", []),
-            data_sources=[final_state.get("db_reasoning", "")],
-            fallback_used=final_state.get("fallback_used", False),
-        )
-    except Exception as e:
-        context = events_to_context(req.events) if req.events else {}
-        G = build_graph(req.zones, hospitals, context)
-        results = allocate_resources(G, req.zones, hospitals)
-        return AgentOptimizeResponse(
-            results=[ZoneResult(**r) if isinstance(r, dict) else r for r in results],
-            agent_reasoning=f"Agent pipeline error: {str(e)}. Used direct allocation.",
-            events_applied=[f"{ev.event_type}: {ev.params}" for ev in req.events],
-            data_sources=[],
-            fallback_used=True,
-        )
 @app.post("/predict")
 async def predict(
     disaster_type: str = Form(...),
