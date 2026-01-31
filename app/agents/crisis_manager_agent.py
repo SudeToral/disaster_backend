@@ -29,18 +29,24 @@ CRISIS_ANALYSIS_PROMPT = (
 )
 
 ROUND_ANALYSIS_PROMPT = (
-    "You are a disaster crisis analyst. Analyze what happened in this single round "
-    "of crisis response. Provide:\n"
-    "1. What resources were deployed/returned and their effect on demand.\n"
-    "2. Which zones are still struggling and why.\n"
-    "3. A recommendation: should more resources be sent, or should the user add "
-    "events (road_collapse, weather, etc.) to simulate new obstacles?\n\n"
+    "You are a disaster crisis decision analyst. Your job is to explain WHY "
+    "the resource allocation decisions were made this round.\n\n"
+    "Explain:\n"
+    "1. Why were these specific hospitals chosen for these zones? "
+    "(consider proximity, available capacity, specialization)\n"
+    "2. Why were these resource types and quantities selected? "
+    "(consider zone damage severity, population density, terrain, demand)\n"
+    "3. If any zones received fewer resources or were skipped, explain why. "
+    "(e.g. no reachable hospital, event blocking access, low inventory)\n"
+    "4. If there are active events (road_collapse, weather, etc.), explain how "
+    "they changed the allocation decisions.\n\n"
     "Rules:\n"
-    "- Reference specific zone IDs, hospital IDs, and resource types.\n"
-    "- Keep it to 3-5 sentences.\n"
+    "- Be concise: 3-5 sentences max.\n"
+    "- Reference specific zone IDs, hospital names, and resource types.\n"
+    "- Focus on justifying decisions, not summarizing data the user already sees.\n"
+    "- Do not suggest adding events or simulating obstacles.\n"
     "- Write in English."
 )
-
 
 class CrisisManagerAgent:
     """Manages the crisis lifecycle using data_store directly (no HTTP).
@@ -107,6 +113,7 @@ class CrisisManagerAgent:
                     returned_dispatches_detail.append({
                         "dispatch_id": d["dispatch_id"],
                         "hospital_id": d["hospital_id"],
+                        "hospital_name": d.get("hospital_name", ""),
                         "zone_id": d["zone_id"],
                         "resource_type": d["resource_type"],
                         "count": d["count"],
@@ -500,6 +507,8 @@ class CrisisManagerAgent:
             zs["remaining_demand"] for zs in crisis["zone_states"].values()
         )
 
+
+
         zone_summary = {
             zid: {
                 "initial_demand": zs["initial_demand"],
@@ -508,6 +517,17 @@ class CrisisManagerAgent:
             }
             for zid, zs in crisis["zone_states"].items()
         }
+
+        zone_context = {}
+        for zid, zs in crisis["zone_states"].items():
+            zd = zs.get("zone_data", {})
+            zone_context[zid] = {
+                "damage_severity": zd.get("damage_severity"),
+                "population_density": zd.get("population_density"),
+                "terrain_type": zd.get("terrain_type"),
+                "demand": zd.get("demand"),
+                "remaining_demand": zs["remaining_demand"],
+            }
 
         # Generate LLM reasoning for this round
         round_data_for_llm = {
@@ -560,6 +580,7 @@ class CrisisManagerAgent:
                     "zone_id": d["zone_id"],
                     "resource_type": d["resource_type"],
                     "count": d["count"],
+                    "hospital_name": d.get("hospital_name", ""),
                     "capacity_served": d.get("capacity_served", d["count"]),
                     "status": d["status"],
                 }

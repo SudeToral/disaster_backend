@@ -23,9 +23,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.model.model import predict_with_type
 
 app = FastAPI(title="MED-ARES Optimization Engine")
-app.include_router(data_router)
-app.include_router(crisis_router)
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -36,6 +33,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.include_router(data_router)
+app.include_router(crisis_router)
+
+
 
 
 UPLOAD_DIR = "uploads"
@@ -210,6 +211,7 @@ async def optimize(req: AllocationRequest):
             {
                 "dispatch_id": d["dispatch_id"],
                 "hospital_id": d["hospital_id"],
+                "hospital_name": d.get("hospital_name", ""),
                 "zone_id": d["zone_id"],
                 "resource_type": d["resource_type"],
                 "count": d["count"],

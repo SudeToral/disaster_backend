@@ -185,6 +185,7 @@ class DataStore:
                     dispatches.append({
                         "dispatch_id": str(uuid.uuid4())[:8],
                         "hospital_id": res["hospital"],
+                        "hospital_name": self.hospitals.get(res["hospital"], {}).get("name", ""),
                         "zone_id": r["zone_id"],
                         "resource_type": rtype,
                         "count": count,
@@ -277,6 +278,7 @@ class DataStore:
                     self.active_crisis["dispatches"].append({
                         "dispatch_id": str(uuid.uuid4())[:8],
                         "hospital_id": res["hospital"],
+                        "hospital_name": self.hospitals.get(res["hospital"], {}).get("name", ""),
                         "zone_id": r["zone_id"],
                         "resource_type": rtype,
                         "count": count,
@@ -308,11 +310,11 @@ class DataStore:
             for zs in self.active_crisis["zone_states"].values()
         )
 
-    def append_events(self, new_events: list[dict]):
+    def append_events(self, events: list[dict]):
         """Append new events to the active crisis event list."""
         if not self.active_crisis:
             raise ValueError("No active crisis")
-        for event in new_events:
+        for event in events:
             e = event if isinstance(event, dict) else event.model_dump()
             self.active_crisis["events"].append(e)
 

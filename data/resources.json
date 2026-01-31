@@ -50,16 +50,16 @@
     }
   ],
   "inventory": {
-    "H1":  {"ambulance": 20, "helicopter": 1, "search_and_rescue": 1, "heavy_rescue": 2},
-    "H2":  {"ambulance": 12, "heavy_rescue": 1, "food_supply": 1},
-    "H3":  {"ambulance": 10, "search_and_rescue": 1, "rescue_boat": 2},
-    "H4":  {"ambulance": 4, "search_and_rescue": 1, "rescue_boat": 3},
-    "H5":  {"ambulance": 5, "search_and_rescue": 2, "heavy_rescue": 1, "food_supply": 1},
-    "H6":  {"ambulance": 3, "fire_truck": 3, "fire_helicopter": 1},
-    "H7":  {"ambulance": 6, "fire_truck": 1, "rescue_boat": 1, "food_supply": 2},
-    "H8":  {"ambulance": 4, "rescue_boat": 1, "food_supply": 3},
-    "H9":  {"ambulance": 10, "search_and_rescue": 1, "fire_truck": 2, "heavy_rescue": 2},
-    "H10": {"ambulance": 3, "helicopter": 4, "fire_helicopter": 2},
-    "H11": {"ambulance": 2, "heavy_rescue": 1, "food_supply": 5}
+    "Central Hospital":  {"ambulance": 20, "helicopter": 1, "search_and_rescue": 1, "heavy_rescue": 2},
+    "City General Hospital":  {"ambulance": 12, "heavy_rescue": 1, "food_supply": 1},
+    "Harbor Medical Center":  {"ambulance": 10, "search_and_rescue": 1, "rescue_boat": 2},
+    "Coast Guard Station":  {"ambulance": 4, "search_and_rescue": 1, "rescue_boat": 3},
+    "Pine Ridge Clinic":  {"ambulance": 5, "search_and_rescue": 2, "heavy_rescue": 1, "food_supply": 1},
+    "Forestry Fire Station":  {"ambulance": 3, "fire_truck": 3, "fire_helicopter": 1},
+    "Flatlands District Hospital":  {"ambulance": 6, "fire_truck": 1, "rescue_boat": 1, "food_supply": 2},
+    "Agricultural Aid Center":  {"ambulance": 4, "rescue_boat": 1, "food_supply": 3},
+    "Ironworks Industrial Hospital":  {"ambulance": 10, "search_and_rescue": 1, "fire_truck": 2, "heavy_rescue": 2},
+    "Air Rescue Base": {"ambulance": 3, "helicopter": 4, "fire_helicopter": 2},
+    "Regional Emergency Depot": {"ambulance": 2, "heavy_rescue": 1, "food_supply": 5}
   }
 }

@@ -1,7 +1,7 @@
 {
   "hospitals": [
     {
-      "hospital_id": "H1",
+      "hospital_id": "Central Hospital",
       "name": "Central Hospital",
       "hospital_type": "trauma_center",
       "ambulances": 20,
@@ -12,7 +12,7 @@
       "region_id": "R1"
     },
     {
-      "hospital_id": "H2",
+      "hospital_id": "City General Hospital",
       "name": "City General Hospital",
       "hospital_type": "regular",
       "ambulances": 12,
@@ -23,7 +23,7 @@
       "region_id": "R1"
     },
     {
-      "hospital_id": "H3",
+      "hospital_id": "Harbor Medical Center",
       "name": "Harbor Medical Center",
       "hospital_type": "regular",
       "ambulances": 10,
@@ -34,7 +34,7 @@
       "region_id": "R2"
     },
     {
-      "hospital_id": "H4",
+      "hospital_id": "Coast Guard Station",
       "name": "Coast Guard Station",
       "hospital_type": "coast_guard",
       "ambulances": 4,
@@ -45,7 +45,7 @@
       "region_id": "R2"
     },
     {
-      "hospital_id": "H5",
+      "hospital_id": "Pine Ridge Clinic",
       "name": "Pine Ridge Clinic",
       "hospital_type": "field_hospital",
       "ambulances": 5,
@@ -56,7 +56,7 @@
       "region_id": "R3"
     },
     {
-      "hospital_id": "H6",
+      "hospital_id": "Forestry Fire Station",
       "name": "Forestry Fire Station",
       "hospital_type": "fire_station",
       "ambulances": 3,
@@ -67,7 +67,7 @@
       "region_id": "R3"
     },
     {
-      "hospital_id": "H7",
+      "hospital_id": "Flatlands District Hospital",
       "name": "Flatlands District Hospital",
       "hospital_type": "regular",
       "ambulances": 6,
@@ -78,7 +78,7 @@
       "region_id": "R4"
     },
     {
-      "hospital_id": "H8",
+      "hospital_id": "Agricultural Aid Center",
       "name": "Agricultural Aid Center",
       "hospital_type": "field_hospital",
       "ambulances": 4,
@@ -89,7 +89,7 @@
       "region_id": "R4"
     },
     {
-      "hospital_id": "H9",
+      "hospital_id": "Ironworks Industrial Hospital",
       "name": "Ironworks Industrial Hospital",
       "hospital_type": "regular",
       "ambulances": 10,
@@ -100,7 +100,7 @@
       "region_id": "R5"
     },
     {
-      "hospital_id": "H10",
+      "hospital_id": "Air Rescue Base",
       "name": "Air Rescue Base",
       "hospital_type": "helibase",
       "ambulances": 3,
@@ -111,7 +111,7 @@
       "region_id": "R5"
     },
     {
-      "hospital_id": "H11",
+      "hospital_id": "Regional Emergency Depot",
       "name": "Regional Emergency Depot",
       "hospital_type": "logistics_hub",
       "ambulances": 2,
