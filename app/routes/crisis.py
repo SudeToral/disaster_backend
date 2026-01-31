@@ -126,8 +126,8 @@ def next_round(req: NextRoundRequest = None):
     if not crisis:
         raise HTTPException(404, "No active crisis")
 
-    if req and req.new_events:
-        new_event_dicts = [e.model_dump() for e in req.new_events]
+    if req and req.events:
+        new_event_dicts = [e.model_dump() for e in req.events]
         data_store.append_events(new_event_dicts)
 
     from app.agents.crisis_manager_agent import CrisisManagerAgent

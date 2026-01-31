@@ -91,7 +91,7 @@ class BatchReturnRequest(BaseModel):
 
 class NextRoundRequest(BaseModel):
     """Request body for POST /crisis/next-round."""
-    new_events: List[Event] = []
+    events: List[Event] = []
 
 
 AVAILABLE_EVENT_TYPES = [
