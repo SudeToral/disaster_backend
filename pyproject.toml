@@ -13,4 +13,6 @@ dependencies = [
   "langchain-ollama>=0.2",
   "langgraph>=0.2",
   "httpx",
+  "python-multipart>=0.0.22",
+  "ultralytics>=8.4.9",
 ]
