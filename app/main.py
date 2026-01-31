@@ -11,10 +11,44 @@ from app.routes.crisis import router as crisis_router
 
 # Initialize data store from JSON files
 data_store.load_from_json()
+import os
+import uuid
+import shutil
+from typing import Any, Dict
+from fastapi import UploadFile, File, Form, HTTPException
+from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
+
+from app.model.model import predict_with_type
 
 app = FastAPI(title="MED-ARES Optimization Engine")
 app.include_router(data_router)
 app.include_router(crisis_router)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",   # Vite default
+        "http://127.0.0.1:5173",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+UPLOAD_DIR = "uploads"
+ORIGINAL_DIR = os.path.join(UPLOAD_DIR, "original")
+OVERLAY_DIR = os.path.join(UPLOAD_DIR, "overlay")
+
+
+os.makedirs(ORIGINAL_DIR, exist_ok=True)
+os.makedirs(OVERLAY_DIR, exist_ok=True)
+
+# overlay/original dosyalarını URL ile servis etmek için:
+app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
+
 
 
 def _get_hospitals() -> list:
@@ -195,3 +229,79 @@ async def optimize(req: AllocationRequest):
         "available_event_types": AVAILABLE_EVENT_TYPES,
         "continue_prompt": continue_prompt,
     }
+
+    try:
+        final_state = orchestrator_graph.invoke(initial_state)
+        return AgentOptimizeResponse(
+            results=[ZoneResult(**r) if isinstance(r, dict) else r
+                     for r in final_state.get("allocation_results", [])],
+            agent_reasoning=final_state.get("strategy_reasoning", ""),
+            events_applied=final_state.get("events_applied", []),
+            data_sources=[final_state.get("db_reasoning", "")],
+            fallback_used=final_state.get("fallback_used", False),
+        )
+    except Exception as e:
+        context = events_to_context(req.events) if req.events else {}
+        G = build_graph(req.zones, hospitals, context)
+        results = allocate_resources(G, req.zones, hospitals)
+        return AgentOptimizeResponse(
+            results=[ZoneResult(**r) if isinstance(r, dict) else r for r in results],
+            agent_reasoning=f"Agent pipeline error: {str(e)}. Used direct allocation.",
+            events_applied=[f"{ev.event_type}: {ev.params}" for ev in req.events],
+            data_sources=[],
+            fallback_used=True,
+        )
+@app.post("/predict")
+async def predict(
+    disaster_type: str = Form(...),
+    save: bool = Form(False),
+    file: UploadFile = File(...),
+):
+    # 1) input kontrol
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No file uploaded.")
+
+    _, ext = os.path.splitext(file.filename.lower())
+    if ext not in {".jpg", ".jpeg", ".png", ".webp"}:
+        raise HTTPException(status_code=400, detail=f"Unsupported file type: {ext}")
+
+    # 2) orijinal görüntüyü kaydet
+    request_id = str(uuid.uuid4())
+    original_path = os.path.join(ORIGINAL_DIR, f"{request_id}{ext}")
+
+    try:
+        with open(original_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save file: {str(e)}")
+
+    # 3) overlay hedef path (save=true ise model buraya yazabilir)
+    overlay_path = os.path.join(OVERLAY_DIR, f"{request_id}_overlay.png")
+
+    # 4) inference
+    try:
+        result: Dict[str, Any] = predict_with_type(
+            image_path=original_path,
+            disaster_type=disaster_type,
+            save=save,
+            overlay_path=overlay_path
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Prediction error: {str(e)}")
+
+    # 5) response
+    response = {
+        "request_id": request_id,
+        "disaster_type": disaster_type,
+        "original_url": f"/uploads/original/{request_id}{ext}",
+        "is_disaster": result.get("is_disaster", False),
+        "coverage_ratio": result.get("coverage_ratio", 0.0),
+        "damaged_regions": result.get("damaged_regions", 0),
+        "details": result.get("details", {}),
+        "overlay_url": None
+    }
+
+    if save and os.path.exists(overlay_path):
+        response["overlay_url"] = f"/uploads/overlay/{request_id}_overlay.png"
+
+    return JSONResponse(content=response)
